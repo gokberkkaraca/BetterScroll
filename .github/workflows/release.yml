@@ -1,0 +1,80 @@
+name: Release BetterScroll
+on:
+  pull_request_target:
+    branches: [master]
+    types: [closed]
+
+permissions: {}
+
+jobs:
+  release:
+    if: github.event.pull_request.merged == true
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    concurrency:
+      group: release-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MERGED_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+    steps:
+      # Only build the commit already merged into master.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.MERGED_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Determine version
+        run: |
+          git merge-base --is-ancestor v1.0.0 HEAD
+          patch=$(git rev-list --first-parent --count v1.0.0..HEAD)
+          test "$patch" -gt 0
+          echo "VERSION=1.0.$patch" >> "$GITHUB_ENV"
+
+      - name: Run checks
+        run: make check
+
+      - name: Build and verify Apple silicon DMG
+        env:
+          SPARKLE_PUBLIC_KEY: ${{ vars.SPARKLE_PUBLIC_KEY }}
+        run: |
+          test "$(uname -m)" = arm64
+          : "${SPARKLE_PUBLIC_KEY:?Set the SPARKLE_PUBLIC_KEY repository variable}"
+          make dmg SIGN_IDENTITY=-
+          app="build/BetterScroll.app"
+          codesign --verify --deep --strict "$app"
+          test "$(plutil -extract CFBundleShortVersionString raw "$app/Contents/Info.plist")" = "$VERSION"
+          mkdir -p build/update
+          mv "build/BetterScroll.dmg" "build/update/BetterScroll-$VERSION-arm64.dmg"
+          hdiutil verify "build/update/BetterScroll-$VERSION-arm64.dmg"
+
+      - name: Sign the update feed and archive
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          : "${SPARKLE_PRIVATE_KEY:?Set the SPARKLE_PRIVATE_KEY repository secret}"
+          printf '%s\n' "$SPARKLE_PRIVATE_KEY" | build/sparkle-*/bin/generate_appcast \
+            --ed-key-file - --maximum-deltas 0 \
+            --download-url-prefix "https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION/" \
+            build/update
+          grep -q 'sparkle:edSignature=' build/update/appcast.xml
+
+      - name: Publish release
+        run: |
+          tag="v$VERSION"
+          asset="build/update/BetterScroll-$VERSION-arm64.dmg"
+          if gh release view "$tag" > /dev/null 2>&1; then
+            if [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" = false ]; then
+              names=$(gh release view "$tag" --json assets --jq '.assets[].name')
+              grep -Fx "$(basename "$asset")" <<<"$names"
+              grep -Fx "appcast.xml" <<<"$names"
+              exit 0
+            fi
+          else
+            gh release create "$tag" --target "$MERGED_SHA" --title "BetterScroll $VERSION" --draft --generate-notes
+          fi
+          gh release upload "$tag" "$asset" build/update/appcast.xml --clobber
+          gh release edit "$tag" --draft=false

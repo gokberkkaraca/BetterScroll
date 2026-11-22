@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>local.mousecontrol.MouseControl</string>
+<key>CFBundleName</key><string>BetterScroll</string>
+<key>CFBundleDisplayName</key><string>BetterScroll</string>
+<key>CFBundleIconFile</key><string>BetterScroll.icns</string>
+<key>CFBundleExecutable</key><string>BetterScroll</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleVersion</key><string>1.0.0</string>
+<key>CFBundleShortVersionString</key><string>1.0.0</string>
+<key>LSMinimumSystemVersion</key><string>12.0</string>
+<key>LSUIElement</key><true/>
+<key>NSInputMonitoringUsageDescription</key><string>Read wheel and button reports from your Bluetooth Logitech MX Master mouse.</string>
+</dict></plist>
